@@ -1,12 +1,22 @@
-## PlayerData ModulesScript ##
+## Playerdata Module! ## (The New and Improved u.u)
 local Players = game:GetService("Players")
 local SSS = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local storeService = game:GetService("DataStoreService")
 local dataStore = storeService:GetDataStore("playerData")
+local restoreData = storeService:GetDataStore("StoreData")
+
+local getPlayerData = Instance.new("RemoteEvent")
+getPlayerData.Name = "getPlayerData"
+getPlayerData.Parent =  ReplicatedStorage
+
+local getMinutes = Instance.new("RemoteEvent")
+getMinutes.Name = "getMinutes"
+getMinutes.Parent = ReplicatedStorage
+
 local ModulesScripts = SSS.Modules
 
 local leaderstats = require(ModulesScripts:WaitForChild("PlayerData"):WaitForChild("leaderstats"))
-
 
 local playerData = {}
 --Defining a few global variables within the module. These variables will be accessable in different functions
@@ -14,21 +24,35 @@ local playerData = {}
 playerData.Inventory = {}
 playerData.Achievements = {}
 playerData.Data = {}
+playerData.restoreData = {}
+playerData.storeData = {}
+local playerTime = {
+	elasTime = 0,
+	seconds = 0,
+	minutes = 0,
+	hours = 0,
+	days = 0
+}
+playerData.runningTimer = true
 
---Defining the player values aka what will display on the players leaderboard/leaderstats
-local playerStats = {
-	
+--Function that'll remove the leaderstats folder, helpful because... we create a lot of folders here
+local function removeFolder(player)
+	local folder = player:FindFirstChild("leaderstats")
+	if folder then
+		print("Found Folder")
+		folder:Destroy()
+	end
+end
+
+
+local playerStats = { --Defining the player values aka what will display on the players leaderboard/leaderstats
 	Level = 1,
 	Gold = 100,
-	
 }
 
--- In this function, am either finding the player's data or assigning default data to the player
-local function playerAdded(player: Player)
-	-- print statement to tell if it is running or not
-	print("Running")
-	-- These three values defined to be used later for a repeat loop. Giving the system/user 5 attempts to load the
-	-- player's data before assigning new values.
+local function playerAdded(player: Player) -- In this function, am either finding the player's data or assigning default data to the player
+	print("Running") -- print statement to tell if it is running or not
+	-- These three values defined to be used later for a repeat loop. Giving the system/user 5 attempts to load the player's data before assigning new values.
 	local Success = nil
 	local Data = nil
 	local Attempts = 1
@@ -48,13 +72,11 @@ local function playerAdded(player: Player)
 			task.wait(3)
 		end
 	until Success or Attempts == 5 --This line here is the reason it loops. If success is true, or attempts == 5, the loop will end.
-	-- If the data is found, should go down to "if Success and Data" because if success was found, data was also found
 	
 	if Success and Data then
 		playerData.Data[player.UserId] = Data
 		leaderstats:Create(player, Data)
-		print(Data) --prints the data the user has saved under their userId
-		return Data --returns the data.
+		return Data --returns the data
 	end
 	
 	if not Data or Data == nil then --If the data isnt found, this will initiate the following statement
@@ -63,11 +85,7 @@ local function playerAdded(player: Player)
 	end
 end
 
---This Function will be responsible for setting up the players data with the following data tables;
--- playerData.Achievements[player]
--- playerData.Inventory[player]
--- playerData.Stats[player]
-
+--This Function will be responsible for setting up the players data with the following data tables; playerData.Achievements[player], playerData.Inventory[player], playerData.Stats[player]
 function playerData.createProfile(player: Player)
 	--Defining Variables
 	local runThrough = 0
@@ -81,8 +99,7 @@ function playerData.createProfile(player: Player)
 	--Defining variables
 	local playerTable = playerData.Achievements[player]
 
-	--These statements below is whats going to create my player's runthrough data and time played data.
-	-- I am also setting the value of these variables to the player's data so that it is properly synced.
+	--These statements below is whats going to create my player's runthrough data and time played data. I am also setting the value of these variables to the player's data so that it is properly synced.
 	local successRunthrough, errRunthrough = pcall(function()
 		dataStore:SetAsync("Runthroughs_".. player.UserId, runThrough) --Setting up a Datastore sync for runthrough.
 	end)
@@ -97,7 +114,6 @@ function playerData.createProfile(player: Player)
 		print("Error saving Runthrough: ", errRunthrough) -- or it prints a error if something was wrong with saving/creating runthrough data 
 	end
 
-
 	if successTimePlayed then
 		playerTable.Time_Player = timePlayed --Assigns the value of timeplayed to the player's datatable (which is also 0)
 	else
@@ -109,6 +125,7 @@ function playerData.createProfile(player: Player)
 
 		runthroughUpdate = 0, -- These'll be used for more sessionData, not used as of right now but will need in future
 		timeplayedUpdate = 0,
+		logIns = 0,
 		levelUpdate = 0,
 		goldUpdate = 0,
 		experienceUpdate = 0
@@ -118,14 +135,13 @@ function playerData.createProfile(player: Player)
 	--Combines all data above to a single datatable named "UserData"
 	--This is what will be returned to the player when they request their data or after they require new data.
 	userData = {
-
+		version = 1,
 		profile = playerStats,
 		achievements = playerTable,
-		trackRecord = updateLogs
-
+		trackRecord = updateLogs,
+		timeSpent = playerTime
 	}
-	leaderstats:Create(player, userData) --Creates the leaderboard for the player then assigns the values depending
-	-- on what the playerStats variable brings over to the leaderstats module (which is only the Player's Level and Gold)
+	leaderstats:Create(player, userData) --Creates the leaderboard for the player then assigns the values
 	print(userData) --printing the userdata to see if the data got stored properly
 	playerData.Data[player.UserId] = userData -- Assign userData to a global variable so you can access it later on
 	return userData -- returns the players data
@@ -140,29 +156,26 @@ local function dataSaver(player: Player)
 		print(playerData.Data[player.UserId])
 		if userData then
 			if playerData.Data[player.UserId] then
-				print("Saving Data . . .") --Debug feature 2. making sure the player data assigned to the player;
-				-- "playerData.Data[player.UserId" exists / is initiated somewhere within the module
+				print("Saving Data . . .") --Debug feature 2. making sure the player data assigned to the player
 				local success, errormessage = pcall(function() --protected call to ensure the data saves without issues
-					-- More items will be added here but as this is just a testing phase, this is all I am going to do for now.
-					local dataToSave = { --This variable checks the user's leaderstats values Gold and Levels ans assigns them
-						--to the variable Gold and Level within the datatable for later use
+					local dataToSave = { --This variable checks the user's leaderstats values Gold and Levels ans assigns them to the variable Gold and Level within the datatable for later use
 						Gold = userData.Gold.Value,
 						Level = userData.Level.Value
 					}
-					playerData.Data[player.UserId].profile.Gold = dataToSave.Gold -- Later use is here, we're accessing the
-					-- player's database profile, where all things within the leaderstats are kept and updating the data
+					local logInCounter = playerData.Data[player.UserId].trackRecord.logIns
+					logInCounter += 1
+					playerData.Data[player.UserId].trackRecord.logIns = logInCounter
+					playerData.Data[player.UserId].profile.Gold = dataToSave.Gold -- Later use is here, we're accessing the player's database profile, where all things within the leaderstats are kept and updating the data
 					playerData.Data[player.UserId].profile.Level = dataToSave.Level -- Same with Level
-
-
-					dataStore:SetAsync("playerData_"..player.UserId, playerData.Data[player.UserId]) -- Then, we set the sync
-					--because if its the user's first time playing and we use "UpdateAsync", their data will be lost due to never having their data set.
-					-- There may be a better approach to this but for now, this is my solution
+					
+					playerData.restoreData[player.UserId] = playerData.Data[player.UserId]
+					print(playerData.restoreData[player.UserId])
+					dataStore:SetAsync("playerData_"..player.UserId, playerData.Data[player.UserId]) -- SetSync to be able to recall the data when player rejoins
 					print("Data Saved!") --print statement to let me know the data saved
 				end)
 
 				if not success then
-					--Debug message, letting me know what went wrong
-					warn("Failed to save Data for player ".. player.Name.. ":", errormessage)
+					warn("Failed to save Data for player ".. player.Name.. ":", errormessage) --Debug message, letting me know what went wrong
 				end
 			end
 		end
@@ -174,9 +187,8 @@ function playerData.getProfile(player: Player)
 	return playerData.Data[player.UserId]
 end
 
---The wipe function, removing the players saved data, replacing it with an empty table, and kicking them from the
--- server so the playerremoving event takes place.
-function playerData.wipe(player: Player, data)
+--The wipe function, removing the players saved data, replacing it with an empty table, and kicking them from the server so the playerremoving event takes place.
+function playerData.wipeData(player: Player, data)
 	Players.PlayerRemoving:Connect(function(player)
 		playerData.Data[player.UserId] = nil
 		dataStore:RemoveAsync("playerData_" .. player.UserId)
@@ -184,100 +196,101 @@ function playerData.wipe(player: Player, data)
 	player:Kick("Data has Been Wiped!")
 end
 
-Players.PlayerAdded:Connect(playerAdded) -- Runs the playerAdded function when a player joins the game
-Players.PlayerRemoving:Connect(dataSaver) -- runs dataSaver when player Leaves
-
---Returns the player modules
-return playerData
-
-## Leaderstats ModuleScript ##
-local module = {}
-
---Function for the players leaderstats, requiring the players name as well as their profile
-function module:Create(player: Player, profile)
-	print("Running!")
-	--Creates leaderstats
-	local leaderstats = Instance.new("Folder")
-	leaderstats.Name = "leaderstats"
-	leaderstats.Parent = player
-	
-	--Creates Level
-	local level = Instance.new("IntValue")
-	level.Name = "Level"
-	level.Parent = leaderstats
-	level.Value = profile.profile.Level
-	
-	--Creates Gold
-	local gold = Instance.new("IntValue")
-	gold.Name = "Gold"
-	gold.Parent = leaderstats
-	gold.Value = profile.profile.Gold
-	
+--function to store a players data, after storing their data, they'll be assigned default data! They can play around with it and then before they leave, they can restore their original data.
+function playerData.store(player: Player, data)
+	print("Running")
+	dataStore:SetAsync("StoreData_" .. player.UserId, data) -- stores their current data within the datastore
+	print(data)
+	print(playerData.Data[player.UserId])
+	--Resetting every and any data the player may have
+	playerData.Data[player.UserId] = nil
+	data = nil
+	removeFolder(player)
+	playerData.createProfile(player)
 end
 
---Returns module and whatever lies within
-return module
-
-## ServerScript 1 ##
-require(script.Parent.Parent.Modules.PlayerData) --Requires PlayerData, initiating the player.playeradded code to run
---as well as the player.playerremoving when they leave
-
-## interactablesServerScript ##
---Requiring Services
-local Players = game:GetService("Players")
-local DataStoreService = game:GetService("DataStoreService")
-local ServerScriptService = game:GetService("ServerScriptService")
-local dataStore = DataStoreService:GetDataStore("playerData")
-local playerData = require(ServerScriptService.Modules:WaitForChild("PlayerData"))
-
---Getting Parts/ProxPrompts from workspace
-local goldPrompt = game.Workspace.getGold.ProximityPrompt
-local levelsPrompt = game.Workspace.getLevels.ProximityPrompt
-local wipePrompt = game.Workspace.wipe.ProximityPrompt
-
---Creating a function that gives you +10 gold per trigger
-goldPrompt.Triggered:Connect(function(player)
-	--Make-shift debounce. Ensures no spam
-	goldPrompt.Enabled = false
-	--Retrieving the player data from the local player aka whoever triggered the proxprompt
-	local profile = playerData.getProfile(player)
-	print(profile)
-	if not profile then return end
-	--Assigning variables to values
-	local gold = profile.profile.Gold
-	gold += 10
-	--Updating the variables below to be on par with the variable "Gold". Otherwise, there will be issues displaywise
-	profile.profile.Gold = gold
-	player.leaderstats.Gold.Value = gold
-	-- vv debounce wait time vv
-	task.wait(3)
-	goldPrompt.Enabled = true
-end)
-
---Creating a function that gives you +1 level per trigger
-levelsPrompt.Triggered:Connect(function(player)
-	--Make-shift debounce. Ensures that spam is not possible
-	levelsPrompt.Enabled = false
-	-- Get your profile from the playerData modulescript to access player data
-	local profile = playerData.getProfile(player)
-	print(profile)
-	if not profile then return end
-	--Assigning variables
-	local Level = profile.profile.Level
-	Level += 1
-	--Updating the variables below to be on par with the variable "Level". Otherwise, there will be issues displaywise
-	profile.profile.Level = Level
-	player.leaderstats.Level.Value = Level
-	--vv debounce wait time vv
-	task.wait(3)
-	levelsPrompt.Enabled = true
-end)
-
---Creating a function that wipes your data!
-wipePrompt.Triggered:Connect(function(player)
-	--using the required modulescript, this code will run the wipe function from playerData, ultimately removing
-	--whatever data you had and re-assigning you to the default values
+--function to recall the saved data above
+function playerData.recallSavedData(player: Player)
+	local success, data = pcall(function()
+		return dataStore:GetAsync("StoreData_" .. player.UserId)
+	end)
 	
-	--Useful if trying to assign a whole new value/datatable
-	playerData.wipe(player, playerData.Data[player.UserId])
+	if success and data then
+		print(success)
+		print(data)
+		playerData.Data[player.UserId] = data
+		print(playerData.Data[player.UserId])
+		removeFolder(player)
+		leaderstats:Create(player, playerData.Data[player.UserId])
+		print(data)
+		dataStore:RemoveAsync("StoreData_" .. player.UserId)
+	end
+	
+	if not success and data then
+		warn("No Data to recall")
+	end
+end
+
+--Function to keep track of how long a player has been playing your game! (I suck with GUI so I made it as minimal as possible)
+local function startTimer(player: Player, elapseTime)
+	local secondstoMinutesandMinutestoHours = 60
+	local hourstoDays = 24
+	local secondsCounter = 0
+	local minutesCounter = 0
+	local hoursCounter = 0
+	local daysCounter = 0
+	
+	while playerData.runningTimer == true do
+		wait(1)
+		elapseTime = playerData.Data[player.UserId].timeSpent.seconds --grab the seconds the player may already have within the game and set that to elapse time aka the start time
+		elapseTime += 1
+		playerData.Data[player.UserId].timeSpent.seconds = elapseTime
+		getPlayerData:FireClient(player, elapseTime)
+		
+		if elapseTime >= secondstoMinutesandMinutestoHours then
+			elapseTime = 0
+			minutesCounter = playerData.Data[player.UserId].timeSpent.minutes
+			minutesCounter += 1
+			playerData.Data[player.UserId].timeSpent.seconds = secondsCounter
+			playerData.Data[player.UserId].timeSpent.minutes = minutesCounter
+			getMinutes:FireClient(player, minutesCounter)
+			
+			if minutesCounter >= secondstoMinutesandMinutestoHours then
+				minutesCounter = 0
+				hoursCounter = playerData.Data[player.UserId].timeSpent.hours
+				hoursCounter += 1
+				playerData.Data[player.UserId].timeSpent.minutes = minutesCounter
+				playerData.Data[player.UserId].timeSpent.hours = hoursCounter
+				
+				if hoursCounter >= hourstoDays then
+					hoursCounter = 0
+					daysCounter = playerData.Data[player.UserId].timeSpent.days
+					daysCounter = 1
+					playerData.Data[player.UserId].timeSpent.hours = hoursCounter
+					playerData.Data[player.UserId].timeSpent.days = daysCounter
+				end
+			end
+		end
+	end
+end
+
+--A function to stop the timer above by setting the variable that keeps the timer running to false
+local function stopTimer()
+	playerData.runningTimer = false
+end
+
+Players.PlayerAdded:Connect(playerAdded) -- Runs the playerAdded function when a player joins the game
+--This player added function starts the timer when the player joins
+Players.PlayerAdded:Connect(function(player)
+	task.wait(5)
+	local timer = playerData.Data[player.UserId].timeSpent.elasTime
+	coroutine.wrap(startTimer)(player, timer) --coroutine wrapped it so it can play in the background
 end)
+
+Players.PlayerRemoving:Connect(dataSaver) -- runs dataSaver when player Leaves
+--This player leaving function stops the timer when the player leaves
+Players.PlayerRemoving:Connect(function(player)
+	stopTimer()
+end)
+
+return playerData --Returns the player modules
